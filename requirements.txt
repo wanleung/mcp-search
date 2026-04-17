@@ -1,7 +1,8 @@
 fastmcp>=0.4.0
 playwright>=1.44.0
 duckduckgo-search>=6.1.0
-elasticsearch>=8.13.0,<9.0.0
+elasticsearch[async]>=8.13.0,<9.0.0
+aiohttp>=3.9.0
 python-dotenv>=1.0.0
 beautifulsoup4>=4.12.0
 lxml>=5.0.0
