@@ -8,12 +8,13 @@ services:
     ports:
       - "9200:9200"
     volumes:
-      - esdata:/var/lib/elasticsearch/data
+      - esdata:/usr/share/elasticsearch/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
       interval: 10s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
   mcp-server:
     build: .
@@ -25,6 +26,7 @@ services:
     depends_on:
       elasticsearch:
         condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   esdata:
