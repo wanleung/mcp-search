@@ -6,12 +6,15 @@ Provides two search backends:
 - ddg_search: synchronous DuckDuckGo fallback via duckduckgo-search library
 """
 
+import logging
 import random
 import urllib.parse
 
 from bs4 import BeautifulSoup
 from duckduckgo_search import DDGS
 from playwright.async_api import async_playwright
+
+logger = logging.getLogger(__name__)
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -71,8 +74,8 @@ async def scrape_google(query: str, num_results: int = 10) -> list[dict]:
     url = f"https://www.google.com/search?q={urllib.parse.quote(query)}&num={num_results}"
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page(user_agent=random.choice(USER_AGENTS))
         try:
+            page = await browser.new_page(user_agent=random.choice(USER_AGENTS))
             await page.goto(url, wait_until="domcontentloaded", timeout=15000)
             html = await page.content()
         finally:
@@ -104,5 +107,6 @@ def ddg_search(query: str, num_results: int = 10) -> list[dict]:
                 }
                 for r in ddgs.text(query, max_results=num_results)
             ]
-    except Exception:
+    except Exception as exc:
+        logger.warning("ddg_search failed: %s", exc)
         return []
