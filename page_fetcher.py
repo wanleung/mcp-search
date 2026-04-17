@@ -27,6 +27,8 @@ def extract_text_from_html(html: str) -> str:
     Returns:
         Plain text with boilerplate removed, at most MAX_TEXT_LENGTH chars long.
     """
+    if not html:
+        return ""
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "nav", "header", "footer"]):
         tag.decompose()
