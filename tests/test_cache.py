@@ -1,6 +1,8 @@
+import hashlib
 import pytest
 from unittest.mock import AsyncMock
 from datetime import datetime, timezone, timedelta
+from elasticsearch import NotFoundError
 from cache import cache_get, cache_set
 
 ES_INDEX = "mcp_google_cache"
@@ -54,9 +56,30 @@ async def test_cache_set_stores_document(mock_es):
     assert call_kwargs["document"]["key"] == "test query"
     assert call_kwargs["document"]["data"] == data
     assert call_kwargs["document"]["ttl_seconds"] == 86400
+    assert "cached_at" in call_kwargs["document"]
+    cached_at = datetime.fromisoformat(call_kwargs["document"]["cached_at"])
+    assert cached_at.tzinfo is not None  # must be timezone-aware
 
 
 async def test_cache_set_silently_ignores_es_error(mock_es):
     mock_es.index.side_effect = Exception("ES write failed")
     # Should not raise
     await cache_set(mock_es, "key", {"results": []}, ttl_seconds=86400)
+
+
+async def test_cache_set_uses_md5_key(mock_es):
+    key = "test query"
+    expected_id = hashlib.md5(key.encode()).hexdigest()
+    await cache_set(mock_es, key, {"results": []}, 86400)
+    call_kwargs = mock_es.index.call_args.kwargs
+    assert call_kwargs["id"] == expected_id
+
+
+async def test_cache_get_uses_md5_key(mock_es):
+    key = "test query"
+    expected_id = hashlib.md5(key.encode()).hexdigest()
+    mock_es.get.side_effect = NotFoundError("not found", meta=None, body=None)
+    result = await cache_get(mock_es, key)
+    assert result is None
+    call_kwargs = mock_es.get.call_args.kwargs
+    assert call_kwargs["id"] == expected_id
