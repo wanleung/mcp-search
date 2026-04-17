@@ -1,4 +1,6 @@
+import asyncio
 import json
+import logging
 import os
 import sys
 from urllib.parse import urlparse
@@ -12,6 +14,8 @@ from page_fetcher import fetch_page
 from scraper import ddg_search, scrape_google
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 ES_URL = os.getenv("ES_URL", "http://localhost:9200")
 SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
@@ -39,7 +43,9 @@ def format_search_results(results: list[dict], response_format: str, cache_hit: 
         return json.dumps({"results": results, "cached": cache_hit}, ensure_ascii=False)
     lines = [f"### Search Results{label}\n"]
     for i, r in enumerate(results, 1):
-        lines.append(f"**{i}. [{r['title']}]({r['url']})**")
+        title = r.get("title") or "(no title)"
+        url = r.get("url", "#")
+        lines.append(f"**{i}. [{title}]({url})**")
         if r.get("snippet"):
             lines.append(r["snippet"])
         lines.append("")
@@ -64,6 +70,7 @@ async def google_search_handler(
     Returns:
         Formatted string of search results.
     """
+    num_results = min(max(1, num_results), 20)
     cache_key = f"search:{query}:{num_results}"
     cached = await cache_get(es, cache_key)
     if cached:
@@ -71,11 +78,15 @@ async def google_search_handler(
 
     try:
         results = await scrape_google(query, num_results)
-    except Exception:
+    except Exception as exc:
+        logger.warning("scrape_google failed for %r: %s", query, exc)
         results = []
 
     if not results:
-        results = ddg_search(query, num_results)
+        results = await asyncio.to_thread(ddg_search, query, num_results)
+
+    if not results:
+        return "No results found for your query. Try rephrasing or using different keywords."
 
     await cache_set(es, cache_key, {"results": results}, SEARCH_TTL)
     return format_search_results(results, response_format, cache_hit=False)
@@ -111,7 +122,8 @@ async def google_fetch_page_handler(
     try:
         content = await fetch_page(url)
     except Exception as exc:
-        return f"Failed to fetch page: {exc}. Check that the URL is accessible."
+        logger.warning("fetch_page failed for %r: %s", url, exc)
+        return "Failed to fetch the page. Check that the URL is accessible and publicly reachable."
 
     await cache_set(es, f"page:{url}", {"content": content}, PAGE_TTL)
     if response_format == "json":
@@ -138,7 +150,6 @@ async def google_search(
         num_results: Number of results to return (1-20, default 10).
         response_format: 'markdown' (default) or 'json'.
     """
-    num_results = min(max(1, num_results), 20)
     return await google_search_handler(es, query, num_results, response_format)
 
 

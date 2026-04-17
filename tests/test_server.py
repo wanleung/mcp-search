@@ -41,6 +41,37 @@ async def test_google_search_falls_back_to_ddg_on_empty_scrape(mock_es):
     assert "DDG Result" in result
 
 
+async def test_google_search_returns_no_results_message_when_both_sources_empty(mock_es):
+    with patch("server.cache_get", new=AsyncMock(return_value=None)), \
+         patch("server.scrape_google", new=AsyncMock(return_value=[])), \
+         patch("server.ddg_search", return_value=[]), \
+         patch("server.cache_set", new=AsyncMock()) as mock_cache_set:
+        result = await google_search_handler(mock_es, "python", num_results=5, response_format="markdown")
+    assert "No results found" in result
+    mock_cache_set.assert_not_called()
+
+
+async def test_google_fetch_page_returns_error_message_on_exception(mock_es):
+    with patch("server.cache_get", new=AsyncMock(return_value=None)), \
+         patch("server.fetch_page", new=AsyncMock(side_effect=Exception("net::ERR_CONNECTION_REFUSED"))), \
+         patch("server.cache_set", new=AsyncMock()):
+        result = await google_fetch_page_handler(mock_es, "https://example.com", response_format="markdown")
+    assert "Failed to fetch" in result
+    assert "net::ERR_CONNECTION_REFUSED" not in result  # must not leak internal details
+
+
+async def test_google_fetch_page_returns_json_format_on_cache_miss(mock_es):
+    import json
+    with patch("server.cache_get", new=AsyncMock(return_value=None)), \
+         patch("server.fetch_page", new=AsyncMock(return_value="page content")), \
+         patch("server.cache_set", new=AsyncMock()):
+        result = await google_fetch_page_handler(mock_es, "https://example.com", response_format="json")
+    parsed = json.loads(result)
+    assert parsed["url"] == "https://example.com"
+    assert parsed["content"] == "page content"
+    assert parsed["cached"] is False
+
+
 async def test_google_search_returns_json_format(mock_es):
     cached_data = {
         "results": [{"title": "T", "url": "https://t.com", "snippet": "s"}]
