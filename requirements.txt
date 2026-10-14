@@ -1,4 +1,4 @@
-fastmcp>=0.4.0
+fastmcp>=3.4,<4  # running 3.4.2; 4.x is a new major version
 playwright>=1.44.0
 duckduckgo-search>=6.1.0
 elasticsearch[async]>=8.13.0,<9.0.0
